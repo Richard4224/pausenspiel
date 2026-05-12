@@ -1,0 +1,17 @@
+Schiffe versenken:
+
+  1. Auswahl des Spielmodus (ob gegen Spieler oder gegen KI)
+
+  2. Laden des Spielfeldes
+
+  3. Spieler setzt seine Schiffe
+
+  4. Spieler 2 setzt seine Schiffe
+
+  5. Spieler 1 hat seinen ersten Zug
+    - Wenn er getroffen hat, wird der Treffer makiert und er darf nochmal schießen
+    - Wenn er verfehlt wird der miss angezeigt und Spieler 2 ist dran
+
+  6. Wenn ein Schiff zerstört wird wird das angezeigt
+
+  7. Wenn alle Schiffe eines Spielers zerstört sind, Gewinner ansagen
