@@ -1,12 +1,9 @@
 import pygame
 import sys
- 
-# ─────────────────────────────────────────────
-#  KONSTANTEN
-# ─────────────────────────────────────────────
+
 BREITE  = 800
-HOEHE   = 600
-FPS     = 60
+HOEHE   = 800
+FPS     = 30
 TITEL   = "Schiffe Versenken"
  
 # Farben (Platzhalter – später anpassen)
