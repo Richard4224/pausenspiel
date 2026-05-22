@@ -5,39 +5,39 @@
 # 3 — treffer
 # 4 — versenkt
 
-class schiff:
+def pruefzahl(zahl, letzte, erste = 0 ):
+    if erste > letzte:
+        erste, letzte = letzte, erste
+    try:
+        a = int(zahl)
+    except ValueError:
+        print ("Value Error")
+        return None
+    if a > letzte or a < erste:
+        print(f"Das Argument muss zwischen {erste} und {letzte} liegen.")
+        return None
+    return a
+
+
+class Schiff:
     def __init__(self, groesse):
         self.groesse = groesse
         self.start = None
+        self.felder = [None for x in range(self.groesse)]
         self.richtung = "horizontal"
         self.treffer = []
-        self.leben = True
+        self.versenkt = False
 
 
-class feld:
+class Spielfeld:
     def __init__(self):
-        self.spielfelder = [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
+        self.raster = [[0]*10 for x in range(10)]
 
-    def set_schiff(self, x, y):
-        self.spielfelder[y][x] = 1
 
-    def set_fehlschuss(self, x, y):
-        self.spielfelder[y][x] = 2
+    def feldzustand_setzen(self, x, y, zustand):
+        nummer = pruefzahl(zustand, 4)
+        self.raster[y][x] = nummer
 
-    def set_treffer(self, x, y):
-        self.spielfelder[y][x] = 3
-
-    def set_versenkt(self, x, y):
-        self.spielfelder[y][x] = 4
 
 
 
