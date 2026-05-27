@@ -1,1 +1,9 @@
 projektkontext.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# pytest
+.pytest_cache/
