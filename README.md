@@ -15,7 +15,7 @@ Das klassische Battleship-Spiel als lokales Python-Spiel mit grafischer Oberflä
 
 ```bash
 # 1. Repository klonen
-git clone <https://github.com/Richard4224/pausenspiel/tree/main>
+git clone https://github.com/Richard4224/pausenspiel/tree/main
 
 # 2. Abhängigkeiten installieren
 pip install -r requirements.txt
