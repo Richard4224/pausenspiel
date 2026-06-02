@@ -24,18 +24,7 @@ pip install -r requirements.txt
 python3 main.py
 ```
 
-Das Spielfenster öffnet sich automatisch in 85 % der nativen Bildschirmauflösung.
-
----
-
-## Fenster & Vollbild
-
-| Aktion | Taste / Geste |
-|---|---|
-| Vollbild ein/aus | `F11` |
-| Fenstergröße ändern | Fensterrand ziehen |
-
-Das Spielfeld und alle Texte passen sich automatisch an jede Fenstergröße an.
+Das Spielfenster öffnet sich mit einer festen Größe von 920×700 Pixeln.
 
 ---
 
@@ -94,7 +83,7 @@ Du schießt, indem du auf eine Zelle im Gegnergitter klickst. Das Gitter zeigt d
 
 Nach deinem Fehlschuss übernimmt die KI automatisch:
 
-1. „KI denkt nach…" – kurze Pause (~0,8 Sekunden)
+1. „KI denkt nach…" – kurze Pause (~1,5 Sekunden)
 2. Der KI-Schuss landet sichtbar auf deinem Spielfeld (orangefarbener Rahmen)
 3. Bei Treffer schießt die KI sofort nochmal, bei Fehlschuss bist du wieder dran
 
