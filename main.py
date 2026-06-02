@@ -46,14 +46,11 @@ SPIELEN        = "spielen"
 KI_DRAN        = "ki_dran"
 GAME_OVER      = "game_over"
 
-KI_WARTE_MS = 800   # Millisekunden bevor die KI schießt
+KI_WARTE_MS = 1500   # Millisekunden bevor die KI schießt
 KI_ZEIGE_MS = 700   # Millisekunden das Ergebnis anzeigen
 
 # ── Spielzustand ──────────────────────────────────────────────────────────────
 # Alles was sich während des Spiels ändert steckt in diesem Dictionary.
-# Ein Dictionary ist wie eine Schublade mit beschrifteten Fächern.
-# Wir benutzen ein Dictionary statt einer Klasse, weil es für Anfänger
-# einfacher zu lesen ist.
 
 spiel = {}   # wird von spiel_neu() befüllt
 
