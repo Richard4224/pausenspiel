@@ -122,6 +122,32 @@ def layout_aktualisieren():
     font_L = pygame.font.SysFont("monospace", int(max(18, min(42, 26 * skala))), bold=True)
     font_M = pygame.font.SysFont("monospace", int(max(13, min(28, 17 * skala))))
     font_S = pygame.font.SysFont("monospace", int(max(11, min(22, 14 * skala))))
+  
+    _textur_cache.clear()  # Cache leeren wenn Fenstergröße sich ändert
+
+
+# Texturen laden
+wasser_textur = pygame.image.load("Modelle,Texturen/Wasser.png").convert()
+
+# Texturen der Schiffsklassen (Größe 2, 3, 4, 5)
+schiff_texturen = {
+    2: pygame.image.load("Modelle,Texturen/Patrol Boat.png").convert_alpha(),
+    3: pygame.image.load("Modelle,Texturen/Destroyer.png").convert_alpha(),
+    4: pygame.image.load("Modelle,Texturen/Cruiser.png").convert_alpha(),
+    5: pygame.image.load("Modelle,Texturen/Battleship.png").convert_alpha(),
+}
+explosion_textur = pygame.image.load("Modelle,Texturen/Explosion.png").convert_alpha()
+splash_textur    = pygame.image.load("Modelle,Texturen/Splash.png").convert_alpha()
+
+_textur_cache = {}
+
+def skalierte_textur(textur, breite, hoehe):
+    # Skaliert eine Textur nur wenn nötig, sonst aus Cache. (Spart Rechenleistung)
+    key = (id(textur), breite, hoehe)
+    if key not in _textur_cache:
+        _textur_cache[key] = pygame.transform.scale(textur, (breite, hoehe))
+    return _textur_cache[key]
+
 
 
 def toggle_vollbild():
@@ -501,62 +527,91 @@ def koordinate(x, y):
 #  Kern-Zeichenfunktionen
 # ═══════════════════════════════════════════════════════════════
 
+def _zeichne_schiff(schiff):
+    """
+    Zeichnet ein Schiff als einzelnes Bild über alle seine Zellen.
+    Erkennt Ausrichtung automatisch anhand der gespeicherten Felder.
+    """
+    if not schiff.felder:
+        return
+
+    textur = schiff_texturen.get(schiff.groesse)
+    if textur is None:
+        return
+
+    # Erstes Feld = obere linke Ecke des Schiffs
+    felder_sorted = sorted(schiff.felder)
+    gx0, gy0 = felder_sorted[0]
+    px, py   = zelle_px(gx0, gy0)
+
+    # Ausrichtung: wenn x sich ändert → horizontal, sonst vertikal
+    horizontal = len({f[0] for f in schiff.felder}) > 1
+
+    if horizontal:
+        breite = schiff.groesse * ZELL - 1
+        hoehe  = ZELL - 1
+        t = skalierte_textur(textur, breite, hoehe)
+    else:
+        # Textur drehen: original horizontal → 90° drehen für vertikal
+        breite = ZELL - 1
+        hoehe  = schiff.groesse * ZELL - 1
+        basis  = skalierte_textur(textur, hoehe, breite)  # erst breit skalieren
+        key    = (id(textur), breite, hoehe, "rot")
+        if key not in _textur_cache:
+            _textur_cache[key] = pygame.transform.rotate(basis, -90)
+        t = _textur_cache[key]
+
+    screen.blit(t, (px, py))
+
+
+
 def zeichne_raster(feld, verdeckt=False, vorschau=None, vorschau_ok=True, highlight=None):
-    """
-    Zeichnet das 10×10 Spielfeld auf den Screen.
 
-    Args:
-        feld        – Spielfeld-Objekt dessen Raster gerendert wird
-        verdeckt    – True beim Angriffsgitter: Schiffe werden NICHT angezeigt,
-                      nur Treffer und Fehlschüsse sichtbar (klassische Battleship-Regel)
-        vorschau    – Liste von (x,y)-Zellen die als Platzierungsvorschau eingefärbt werden
-        vorschau_ok – True = grüne Vorschau (gültige Position), False = rote Vorschau
-        highlight   – (x,y)-Zelle die mit orangem Rahmen markiert wird (letzter KI-Schuss)
+    grid_b = 10 * ZELL
+    grid_h = 10 * ZELL
 
-    Zellfarben:
-        Wasser (0)  → WASSER_C  (blau)
-        Schiff (1)  → SCHIFF_C  (grau)   – nur wenn verdeckt=False
-        Fehlschuss (2) → MISS_C (hellblau)
-        Treffer (3) → TREFFER_C (rot)
-    """
-    # ── Zellen einfärben ────────────────────────────────────────
+    # ── Wasser als Hintergrundbild (ganzes Grid) ────────────────
+    wasser = skalierte_textur(wasser_textur, grid_b, grid_h)
+    screen.blit(wasser, (RAND_L, RAND_O))
+
+    # ── Schiffe zeichnen (pro Schiff, über mehrere Zellen) ──────
+    if not verdeckt:
+        for schiff in feld.schiffe:
+            _zeichne_schiff(schiff)
+
+    # ── Treffer und Fehlschuss-Overlays ─────────────────────────
     for gy in range(10):
         for gx in range(10):
             px, py = zelle_px(gx, gy)
             z = feld.raster[gy][gx]
 
-            if z == 1 and not verdeckt:
-                farbe = SCHIFF_C      # Eigenes Schiff sichtbar
-            elif z == 2:
-                farbe = MISS_C        # Fehlschuss
+            if z == 2:
+                # Fehlschuss – Wasserplatscher overlay
+                overlay = skalierte_textur(splash_textur, ZELL - 1, ZELL - 1)
+                screen.blit(overlay, (px, py))
             elif z == 3:
-                farbe = TREFFER_C     # Treffer
-            else:
-                farbe = WASSER_C      # Wasser (inkl. verdeckte Schiffe)
-
-            pygame.draw.rect(screen, farbe, (px, py, ZELL - 1, ZELL - 1))
-            # ZELL-1 lässt einen 1px-Spalt für die Gitterlinie
+                # Treffer – Explosion overlay
+                overlay = skalierte_textur(explosion_textur, ZELL - 1, ZELL - 1)
+                screen.blit(overlay, (px, py))
 
     # ── Versenkte Schiffe auf dem Angriffsgitter aufdecken ──────
-    # Wenn ein Schiff vollständig versenkt ist, darf man seine Felder sehen.
-    # (klassische Spielregel: versenktes Schiff wird aufgedeckt)
     if verdeckt:
         for schiff in feld.schiffe:
             if schiff.versenkt:
+                _zeichne_schiff(schiff)
+                # Explosions-Overlay auf alle Felder des versenkten Schiffs
                 for (gx, gy) in schiff.felder:
                     px, py = zelle_px(gx, gy)
-                    pygame.draw.rect(screen, (160, 40, 40), (px, py, ZELL - 1, ZELL - 1))
+                    overlay = skalierte_textur(explosion_textur, ZELL - 1, ZELL - 1)
+                    screen.blit(overlay, (px, py))
 
     # ── Highlight: letzter KI-Schuss ────────────────────────────
-    # Orangefarbener Rahmen um die zuletzt beschossene Zelle
     if highlight:
         gx, gy = highlight
         px, py = zelle_px(gx, gy)
         pygame.draw.rect(screen, ORANGE, (px - 2, py - 2, ZELL + 1, ZELL + 1), 3)
 
     # ── Platzierungsvorschau ─────────────────────────────────────
-    # Halbtransparente Überlagerung zeigt wo das Schiff landen würde.
-    # SRCALPHA erlaubt Alpha-Werte in der Surface (Transparenz).
     if vorschau:
         alpha = (68, 158, 78, 130) if vorschau_ok else (198, 58, 52, 130)
         s = pygame.Surface((ZELL - 1, ZELL - 1), pygame.SRCALPHA)
@@ -566,25 +621,22 @@ def zeichne_raster(feld, verdeckt=False, vorschau=None, vorschau_ok=True, highli
                 screen.blit(s, zelle_px(gx, gy))
 
     # ── Gitterlinien ────────────────────────────────────────────
-    # 11 Linien für 10 Zellen (eine am Anfang und eine am Ende)
     for i in range(11):
         x = RAND_L + i * ZELL
         y = RAND_O + i * ZELL
-        pygame.draw.line(screen, GITTER_C, (x, RAND_O), (x, RAND_O + 10 * ZELL))   # vertikal
-        pygame.draw.line(screen, GITTER_C, (RAND_L, y), (RAND_L + 10 * ZELL, y))   # horizontal
+        pygame.draw.line(screen, GITTER_C, (x, RAND_O), (x, RAND_O + 10 * ZELL))
+        pygame.draw.line(screen, GITTER_C, (RAND_L, y), (RAND_L + 10 * ZELL, y))
 
     # ── Achsenbeschriftungen ─────────────────────────────────────
-    # Buchstaben (A–J) über den Spalten, Zahlen (1–10) links der Zeilen.
-    # Positionen sind relativ zum Grid damit sie bei jeder Fenstergröße passen.
     for i, c in enumerate("ABCDEFGHIJ"):
         t  = font_S.render(c, True, WEISS)
-        px = RAND_L + i * ZELL + ZELL // 2 - t.get_width() // 2   # horizontal in Spaltenmitte
-        py = RAND_O - t.get_height() - 4                           # etwas oberhalb des Grids
+        px = RAND_L + i * ZELL + ZELL // 2 - t.get_width() // 2
+        py = RAND_O - t.get_height() - 4
         screen.blit(t, (px, py))
     for i in range(10):
         t  = font_S.render(str(i + 1), True, WEISS)
-        px = RAND_L - t.get_width() - 6                            # etwas links des Grids
-        py = RAND_O + i * ZELL + ZELL // 2 - t.get_height() // 2  # vertikal in Zeilenmitte
+        px = RAND_L - t.get_width() - 6
+        py = RAND_O + i * ZELL + ZELL // 2 - t.get_height() // 2
         screen.blit(t, (px, py))
 
 
