@@ -20,6 +20,40 @@ font_gross  = pygame.font.SysFont("Arial", 36, bold=True)
 font_mittel = pygame.font.SysFont("Arial", 22)
 font_klein  = pygame.font.SysFont("Arial", 16)
 
+# ── Texturen ─────────────────────────────────────────────
+
+wasser_textur = pygame.image.load(
+    "Modelle,Texturen/Wasser.png"
+).convert()
+
+schiff_texturen = {
+    2: pygame.image.load(
+        "Modelle,Texturen/Patrol Boat.png"
+    ).convert_alpha(),
+
+    3: pygame.image.load(
+        "Modelle,Texturen/Destroyer.png"
+    ).convert_alpha(),
+
+    4: pygame.image.load(
+        "Modelle,Texturen/Cruiser.png"
+    ).convert_alpha(),
+
+    5: pygame.image.load(
+        "Modelle,Texturen/Battleship.png"
+    ).convert_alpha(),
+}
+
+explosion_textur = pygame.image.load(
+    "Modelle,Texturen/Explosion.png"
+).convert_alpha()
+
+splash_textur = pygame.image.load(
+    "Modelle,Texturen/Splash.png"
+).convert_alpha()
+
+_textur_cache = {}
+
 # ── Farben ────────────────────────────────────────────────────────────────────
 
 BG        = (15,  25,  40)
@@ -266,7 +300,78 @@ def text_zentriert(text, font, y, farbe=WEISS):
     screen.blit(surf, (BREITE // 2 - surf.get_width() // 2, y))
 
 
+def skalierte_textur(textur, breite, hoehe):
+    """
+    Textur nur einmal skalieren und anschließend aus Cache laden.
+    """
+    key = (id(textur), breite, hoehe)
+
+    if key not in _textur_cache:
+        _textur_cache[key] = pygame.transform.scale(
+            textur,
+            (breite, hoehe)
+        )
+
+    return _textur_cache[key]
+
+
 # ── Zeichenfunktionen ─────────────────────────────────────────────────────────
+
+def zeichne_schiff_modell(schiff):
+    """
+    Zeichnet ein Schiff als zusammenhängendes Modell.
+    """
+
+    if not schiff.felder:
+        return
+
+    textur = schiff_texturen.get(schiff.groesse)
+
+    if textur is None:
+        return
+
+    felder_sortiert = sorted(schiff.felder)
+
+    gx0, gy0 = felder_sortiert[0]
+    px, py   = gitter_zu_pixel(gx0, gy0)
+
+    horizontal = len({x for x, y in schiff.felder}) > 1
+
+    if horizontal:
+
+        breite = schiff.groesse * ZELL - 1
+        hoehe  = ZELL - 1
+
+        bild = skalierte_textur(
+            textur,
+            breite,
+            hoehe
+        )
+
+    else:
+
+        breite = ZELL - 1
+        hoehe  = schiff.groesse * ZELL - 1
+
+        basis = skalierte_textur(
+            textur,
+            hoehe,
+            breite
+        )
+
+        key = (id(textur), breite, hoehe, "rot")
+
+        if key not in _textur_cache:
+            _textur_cache[key] = pygame.transform.rotate(
+                basis,
+                -90
+            )
+
+        bild = _textur_cache[key]
+
+    screen.blit(bild, (px, py))
+
+
 
 def zeichne_spielfeld(feld, verdeckt=False, vorschau=None, vorschau_ok=True, highlight=None):
     """
@@ -279,29 +384,71 @@ def zeichne_spielfeld(feld, verdeckt=False, vorschau=None, vorschau_ok=True, hig
     highlight  – Zelle die orange eingerahmt wird (letzter KI-Schuss)
     """
     # Zellen zeichnen
+    grid_b = 10 * ZELL
+    grid_h = 10 * ZELL
+
+    wasser = skalierte_textur(
+        wasser_textur,
+        grid_b,
+        grid_h
+    )
+
+    screen.blit(
+        wasser,
+        (RAND_L, RAND_O)
+    )
+    
+
+    if not verdeckt:
+        for schiff in feld.schiffe:
+            zeichne_schiff_modell(schiff)
+        
+    
     for gy in range(10):
         for gx in range(10):
             px, py = gitter_zu_pixel(gx, gy)
             wert   = feld.raster[gy][gx]
 
-            if wert == 1 and not verdeckt:
-                farbe = SCHIFF_C      # Eigenes Schiff sichtbar
-            elif wert == 2:
-                farbe = MISS_C        # Fehlschuss
-            elif wert == 3:
-                farbe = TREFFER_C     # Treffer
-            else:
-                farbe = WASSER_C      # Wasser
+    if wert == 2:
+        overlay = skalierte_textur(
+            splash_textur,
+            ZELL - 1,
+            ZELL - 1
+        )
 
-            pygame.draw.rect(screen, farbe, (px, py, ZELL - 1, ZELL - 1))
+        screen.blit(overlay, (px, py))
+
+    elif wert == 3:
+        overlay = skalierte_textur(
+            explosion_textur,
+            ZELL - 1,
+            ZELL - 1
+        )
+
+        screen.blit(overlay, (px, py))
 
     # Versenkte Schiffe auch im Angriffsmodus anzeigen
     if verdeckt:
         for schiff in feld.schiffe:
+
             if schiff.versenkt:
+
+                zeichne_schiff_modell(schiff)
+
                 for gx, gy in schiff.felder:
+
                     px, py = gitter_zu_pixel(gx, gy)
-                    pygame.draw.rect(screen, (160, 40, 40), (px, py, ZELL - 1, ZELL - 1))
+
+                    overlay = skalierte_textur(
+                        explosion_textur,
+                        ZELL - 1,
+                        ZELL - 1
+                    )
+
+                    screen.blit(
+                        overlay,
+                        (px, py)
+                    )
 
     # Letzter KI-Schuss orange einrahmen
     if highlight:
