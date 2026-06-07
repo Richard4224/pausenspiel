@@ -37,21 +37,26 @@ GRAU      = (100, 110, 120)
 ORANGE    = (240, 140,  40)
 
 # ── Spielzustände ─────────────────────────────────────────────────────────────
-# Das Spiel ist immer in genau einem dieser Zustände.
+# Das Spiel ist immer in genau einem dieser Zustände (State Machine).
+# Jeder Zustand bestimmt welcher Screen gezeichnet wird und welche Events
+# verarbeitet werden. Übergänge finden nur in den Spiellogik-Funktionen statt.
 
 MENUE          = "menue"
 SCHIFFE_SETZEN = "schiffe_setzen"
-WECHSEL        = "wechsel"
+WECHSEL        = "wechsel"    # Übergabe-Screen: verhindert dass Spieler 2 das Feld von Spieler 1 sieht
 SPIELEN        = "spielen"
-KI_DRAN        = "ki_dran"
+KI_DRAN        = "ki_dran"   # Eigener Zustand damit die KI-Animation nicht den Spieler blockiert
 GAME_OVER      = "game_over"
 
 KI_WARTE_MS = 1500   # Millisekunden bevor die KI schießt
-KI_ZEIGE_MS = 700   # Millisekunden das Ergebnis anzeigen
+KI_ZEIGE_MS = 700    # Millisekunden das Ergebnis anzeigen bevor weitergegangen wird
 
 # ── Spielzustand ──────────────────────────────────────────────────────────────
 # Alles was sich während des Spiels ändert steckt in diesem Dictionary.
 
+# Zentrales Spielzustand-Dictionary: alle veränderlichen Spielvariablen an einem Ort.
+# Kein globaler Zustand ist über mehrere Variablen verteilt – alles steckt hier drin.
+# Das erleichtert Reset (spiel_neu()) und macht Abhängigkeiten zwischen Variablen sichtbar.
 spiel = {}   # wird von spiel_neu() befüllt
 
 
@@ -68,12 +73,12 @@ def spiel_neu():
         "horizontal":       True,                    # Schiff waagerecht (True) oder senkrecht?
         "ki":               None,                    # KI-Objekt, nur im PvE-Modus
         "wechsel_text":     "",                      # Text auf dem Übergabe-Screen
-        "wechsel_next":     "",                      # Was passiert nach Enter?
+        "wechsel_next":     "",                      # Was passiert nach Enter? ("setup2", "start", "zug")
         "letztes_ergebnis": "",                      # "wasser", "treffer" oder "versenkt"
         "gewinner":         None,                    # Index des Gewinners (0 oder 1)
         "ki_wartet":        True,                    # KI: wartet (True) oder zeigt Ergebnis (False)
-        "ki_naechste_zeit": 0,                       # Wann kommt der nächste KI-Schritt?
-        "ki_schuss_xy":     None,                    # Position des letzten KI-Schusses
+        "ki_naechste_zeit": 0,                       # Zeitstempel (ms) wann der nächste KI-Schritt fällig ist
+        "ki_schuss_xy":     None,                    # Position des letzten KI-Schusses für den orangenen Rahmen
     }
 
 
@@ -81,6 +86,7 @@ def spiel_neu():
 
 def spieler_name(idx=None):
     """Gibt 'Spieler 1', 'Spieler 2' oder 'KI' zurück."""
+    # Ohne Argument: Name des aktuell aktiven Spielers. Mit Argument: beliebiger Index.
     i = spiel["aktiver"] if idx is None else idx
     if spiel["modus"] == "pve" and i == 1:
         return "KI"
@@ -140,11 +146,12 @@ def spiel_beginnen():
 
 def schiessen(gx, gy):
     """Aktiver Spieler schießt auf Gitter-Position (gx, gy) des Gegners."""
+    # "1 - aktiver" ist das elegante Muster um zwischen Index 0 und 1 zu wechseln
     gegner_feld = spiel["felder"][1 - spiel["aktiver"]]
     ergebnis    = gegner_feld.schiessen(gx, gy)
 
     if ergebnis is None:
-        return   # Bereits beschossen – ignorieren
+        return   # Bereits beschossen – ignorieren (modelle.py gibt None zurück)
 
     spiel["letztes_ergebnis"] = ergebnis
 
@@ -155,7 +162,7 @@ def schiessen(gx, gy):
 
     if ergebnis == "wasser":
         spieler_wechseln()
-    # Bei Treffer: gleicher Spieler darf nochmal schießen
+    # Bei Treffer: Zustand bleibt SPIELEN → gleicher Spieler darf nochmal schießen
 
 
 def spieler_wechseln():
@@ -172,6 +179,8 @@ def spieler_wechseln():
 
 def ki_zug_starten():
     """KI-Zug einleiten – wechselt in den KI_DRAN-Zustand."""
+    # Durch den eigenen Zustand KI_DRAN kann die Hauptschleife weiter mit 60 FPS laufen
+    # während die KI zeitgesteuert (nicht mit sleep()) auf ihren Zug wartet.
     spiel["ki_schuss_xy"]     = None
     spiel["ki_wartet"]        = True
     spiel["ki_naechste_zeit"] = pygame.time.get_ticks() + KI_WARTE_MS
@@ -184,12 +193,16 @@ def ki_schritt(jetzt):
 
     Phase 1 (ki_wartet=True):  KI wartet kurz, dann schießt sie.
     Phase 2 (ki_wartet=False): Ergebnis kurz anzeigen, dann weiter.
+
+    Zwei Phasen statt einer: der Spieler soll erst die Denkpause sehen (Phase 1),
+    dann das Ergebnis lesen können (Phase 2), bevor das Spiel weitergeht.
     """
     if jetzt < spiel["ki_naechste_zeit"]:
-        return   # Noch nicht Zeit für den nächsten Schritt
+        return   # Timer läuft noch – nichts tun, nächster Frame übernimmt
 
     if spiel["ki_wartet"]:
-        # Phase 1: KI schießt
+        # Phase 1: KI schießt – while-Schleife überspringt bereits beschossene Felder
+        # (kann passieren wenn die KI-Liste durch einen Bug doppelte Einträge hätte)
         while spiel["ki"].kandidaten:
             x, y     = spiel["ki"].naechster_schuss()
             ergebnis = spiel["felder"][0].schiessen(x, y)
@@ -253,11 +266,12 @@ def gitter_zu_pixel(gx, gy):
 
 def maus_zu_gitter(px, py):
     """Mausposition in Pixeln → Gitter-Koordinate, oder None wenn außerhalb."""
+    # Umkehrung von gitter_zu_pixel: Offset abziehen, dann durch Zellgröße teilen
     gx = (px - RAND_L) // ZELL
     gy = (py - RAND_O) // ZELL
     if 0 <= gx < 10 and 0 <= gy < 10:
         return gx, gy
-    return None
+    return None   # Maus ist außerhalb des Spielfelds → kein gültiger Klick
 
 
 def text_zentriert(text, font, y, farbe=WEISS):
@@ -273,12 +287,13 @@ def zeichne_spielfeld(feld, verdeckt=False, vorschau=None, vorschau_ok=True, hig
     10x10 Spielfeld zeichnen.
 
     feld       – das Spielfeld-Objekt
-    verdeckt   – True = Schiffe verstecken (Angriffsmodus)
+    verdeckt   – True = Schiffe verstecken (Angriffsmodus, d.h. Spieler schaut auf Gegnergitter)
     vorschau   – Liste von Zellen die als Platzierungsvorschau eingefärbt werden
-    vorschau_ok– True = grüne Vorschau, False = rote Vorschau
+    vorschau_ok– True = grüne Vorschau (Platzierung möglich), False = rote (ungültig)
     highlight  – Zelle die orange eingerahmt wird (letzter KI-Schuss)
     """
-    # Zellen zeichnen
+    # Zellen zeichnen: Rasterwert aus modelle.py bestimmt die Farbe
+    # 0=Wasser, 1=Schiff, 2=Fehlschuss, 3=Treffer (siehe Spielfeld-Klasse)
     for gy in range(10):
         for gx in range(10):
             px, py = gitter_zu_pixel(gx, gy)
@@ -291,11 +306,11 @@ def zeichne_spielfeld(feld, verdeckt=False, vorschau=None, vorschau_ok=True, hig
             elif wert == 3:
                 farbe = TREFFER_C     # Treffer
             else:
-                farbe = WASSER_C      # Wasser
+                farbe = WASSER_C      # Wasser (oder verdecktes Schiff)
 
             pygame.draw.rect(screen, farbe, (px, py, ZELL - 1, ZELL - 1))
 
-    # Versenkte Schiffe auch im Angriffsmodus anzeigen
+    # Versenkte Schiffe auch im Angriffsmodus aufdecken – Spielregel: versenktes Schiff wird sichtbar
     if verdeckt:
         for schiff in feld.schiffe:
             if schiff.versenkt:
@@ -303,19 +318,19 @@ def zeichne_spielfeld(feld, verdeckt=False, vorschau=None, vorschau_ok=True, hig
                     px, py = gitter_zu_pixel(gx, gy)
                     pygame.draw.rect(screen, (160, 40, 40), (px, py, ZELL - 1, ZELL - 1))
 
-    # Letzter KI-Schuss orange einrahmen
+    # Letzter KI-Schuss orange einrahmen damit der Spieler sieht wohin die KI geschossen hat
     if highlight:
         gx, gy = highlight
         px, py = gitter_zu_pixel(gx, gy)
         pygame.draw.rect(screen, ORANGE, (px - 2, py - 2, ZELL + 1, ZELL + 1), 3)
 
-    # Platzierungsvorschau (halbtransparent)
+    # Platzierungsvorschau mit Transparenz: SRCALPHA-Surface ermöglicht Alpha-Kanal (130 von 255)
     if vorschau:
         alpha = (68, 158, 78, 130) if vorschau_ok else (198, 58, 52, 130)
         s = pygame.Surface((ZELL - 1, ZELL - 1), pygame.SRCALPHA)
         s.fill(alpha)
         for gx, gy in vorschau:
-            if 0 <= gx < 10 and 0 <= gy < 10:
+            if 0 <= gx < 10 and 0 <= gy < 10:   # Vorschau-Zellen außerhalb des Rasters ignorieren
                 screen.blit(s, gitter_zu_pixel(gx, gy))
 
     # Gitternetz
@@ -340,8 +355,13 @@ def zeichne_panel(zeilen):
     """
     Rechtes Infopanel zeichnen.
     zeilen = Liste von (text, farbe). Text "---" zeichnet eine Trennlinie.
+
+    Das Panel wird von den Screen-Funktionen befüllt – jede baut ihre eigene
+    Zeilen-Liste und übergibt sie hier. Dadurch liegt das Layout-Wissen in
+    den Screen-Funktionen, nicht hier.
     """
     panel_x = BREITE - 210
+    # Hintergrund des Panels als gefülltes Rechteck – überdeckt alles was darunter liegt
     pygame.draw.rect(screen, PANEL_BG, (panel_x - 8, 0, BREITE - panel_x + 8, HOEHE))
 
     y = 20
@@ -357,7 +377,9 @@ def zeichne_panel(zeilen):
 
 # ── Screen-Funktionen ─────────────────────────────────────────────────────────
 
-menue_btns = []   # Button-Positionen, werden in zeichne_menue() gesetzt
+# Button-Positionen werden pro Frame in zeichne_menue() berechnet und hier gespeichert,
+# damit die Event-Verarbeitung (Mausklick) auf dieselben Koordinaten zugreifen kann.
+menue_btns = []
 
 
 def zeichne_menue():
@@ -394,7 +416,8 @@ def zeichne_schiffe_setzen():
     sp_name  = f"Spieler {spiel['setup_spieler'] + 1}"
     richtung = "Horizontal" if spiel["horizontal"] else "Vertikal"
 
-    # Vorschau berechnen: welche Zellen würde das Schiff belegen?
+    # Vorschau berechnen: welche Zellen würde das Schiff an der aktuellen Mausposition belegen?
+    # ok=False wenn eine Zelle außerhalb des Rasters oder bereits belegt ist → rote Vorschau
     maus     = pygame.mouse.get_pos()
     zelle    = maus_zu_gitter(*maus)
     vorschau = None
@@ -529,59 +552,77 @@ def zeichne_game_over():
 
 # ── Hauptschleife ─────────────────────────────────────────────────────────────
 # Das Spiel läuft als Endlosschleife mit 60 Frames pro Sekunde.
-# Pro Durchlauf: Events verarbeiten → Zeichnen → Frame anzeigen.
+# Reihenfolge pro Frame: KI-Logik → Events → Zeichnen → flip()
+# flip() tauscht den fertigen Frame in den sichtbaren Puffer (double buffering).
 
-spiel_neu()
+spiel_neu()   # Spiel direkt im MENUE-Zustand starten
 
 while True:
 
-    jetzt = pygame.time.get_ticks()
+    jetzt = pygame.time.get_ticks()   # Millisekunden seit Programmstart (für KI-Timer)
 
-    # KI-Schritt ausführen (zeitgesteuert, läuft automatisch)
+    # KI-Schritt VOR den Events ausführen: so reagiert die KI sofort wenn ihr Timer abläuft,
+    # unabhängig davon ob der Spieler gerade eine Taste drückt.
     if spiel["zustand"] == KI_DRAN:
         ki_schritt(jetzt)
 
-    # Events verarbeiten
+    # pygame sammelt alle Eingaben seit dem letzten Frame in einer Event-Queue.
+    # get() leert die Queue und gibt eine Liste zurück – wir gehen jeden Event durch.
     for event in pygame.event.get():
 
+        # QUIT tritt auf wenn der Nutzer das Fenster schließt (X-Button)
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
 
+        # KEYDOWN = eine Taste wurde gedrückt (nicht gehalten).
+        # pygame.K_r, pygame.K_RETURN usw. sind Konstanten für einzelne Tasten –
+        # K_RETURN ist die Enter-Taste, K_ESCAPE ist Esc, K_r ist die Taste "R".
         elif event.type == pygame.KEYDOWN:
 
             if spiel["zustand"] == SCHIFFE_SETZEN:
-                if event.key == pygame.K_r:
+                if event.key == pygame.K_r:         # R → Ausrichtung umschalten
                     spiel["horizontal"] = not spiel["horizontal"]
-                elif event.key == pygame.K_ESCAPE:
+                elif event.key == pygame.K_ESCAPE:  # Esc → zurück ins Menü
                     spiel_neu()
 
             elif spiel["zustand"] == WECHSEL:
-                if event.key == pygame.K_RETURN:
+                if event.key == pygame.K_RETURN:    # Enter → Übergabe bestätigen
                     wechsel_bestaetigt()
 
             elif spiel["zustand"] == SPIELEN:
-                if event.key == pygame.K_ESCAPE:
+                if event.key == pygame.K_ESCAPE:    # Esc → Spiel abbrechen
                     spiel_neu()
 
             elif spiel["zustand"] == GAME_OVER:
-                if event.key == pygame.K_RETURN:
+                if event.key == pygame.K_RETURN:    # Enter → nochmal spielen
                     spiel_neu()
-                elif event.key == pygame.K_ESCAPE:
+                elif event.key == pygame.K_ESCAPE:  # Esc → Programm beenden
                     pygame.quit()
                     sys.exit()
 
+        # MOUSEBUTTONDOWN = Maustaste gedrückt. event.button == 1 heißt: linke Maustaste.
+        # (2 = mittlere, 3 = rechte Maustaste – die ignorieren wir hier)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
 
             if spiel["zustand"] == MENUE:
-                btn_b, btn_h = 280, 50
+                btn_b, btn_h = 280, 50   # Breite und Höhe der Buttons (gleich wie in zeichne_menue)
+
+                # menue_btns ist eine Liste mit einem Eintrag pro Button.
+                # Jeder Eintrag hat 4 Werte: (label, bx, by, aktion)
+                #   label  = Beschriftung (wird hier nicht gebraucht, nur zum Entpacken)
+                #   bx, by = Pixel-Position der oberen linken Ecke des Buttons
+                #   aktion = "pve" oder "pvp" – wird an spiel_starten() übergeben
                 for label, bx, by, aktion in menue_btns:
+                    # Prüfen ob der Klick (event.pos[0]=x, event.pos[1]=y) innerhalb des Buttons liegt
                     if bx <= event.pos[0] <= bx + btn_b and by <= event.pos[1] <= by + btn_h:
                         spiel_starten(aktion)
 
             elif spiel["zustand"] == SCHIFFE_SETZEN:
+                # *event.pos entpackt das Tupel (x, y) als zwei einzelne Argumente –
+                # dasselbe wie: maus_zu_gitter(event.pos[0], event.pos[1])
                 zelle = maus_zu_gitter(*event.pos)
-                if zelle:
+                if zelle:   # None wenn außerhalb des Spielfelds geklickt
                     schiff_platzieren(*zelle)
 
             elif spiel["zustand"] == SPIELEN:
@@ -603,5 +644,5 @@ while True:
     elif spiel["zustand"] == GAME_OVER:
         zeichne_game_over()
 
-    pygame.display.flip()   # fertigen Frame anzeigen
-    clock.tick(60)          # max. 60 FPS
+    pygame.display.flip()   # fertigen Frame in den sichtbaren Puffer tauschen
+    clock.tick(60)          # max. 60 FPS – verhindert 100% CPU-Auslastung
