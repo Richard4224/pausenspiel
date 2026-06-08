@@ -1,8 +1,8 @@
 """
-modelle.py – Spiellogik für Schiffe Versenken
+modelle.py -> Die Spiellogik für Schiffe Versenken
 ==============================================
 Dieses Modul enthält ausschließlich die Datenstrukturen und Spielregeln.
-Kein pygame, kein Rendering – nur reine Logik.
+Kein pygame, kein Rendering, sondern nur reine Logik.
 
 Klassen:
     Schiff      – ein einzelnes Schiff mit Positionen und Trefferzustand
@@ -20,19 +20,18 @@ import random
 FLOTTE = [5, 4, 3, 3, 2]
 
 # Anzeigenamen für die Schiffsgrößen (wird im UI verwendet)
-SCHIFF_NAMEN = {5: "Schlachtschiff", 4: "Kreuzer", 3: "Zerstörer", 2: "U-Boot"}
+SCHIFF_NAMEN = {5: "Schlachtschiff", 4: "Kreuzer", 3: "Zerstörer", 2: "Kanonenboot"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -------------------------------------------------------------------------------------------------
 
 class Schiff:
     """
     Repräsentiert ein einzelnes Schiff auf dem Spielfeld.
 
     Attribute:
-        groesse  – Anzahl der Felder, die das Schiff belegt
-        felder   – Liste der belegten Zellen als (x, y)-Tupel,
-                   wird beim Platzieren befüllt
+        groesse  – Anzahl der Felder, die das Schiff belegt (in einer Reihe)
+        felder   – Liste der belegten Zellen als (x, y)-Tupel (wird beim Platzieren befüllt)
         treffer  – Set der bereits getroffenen Zellen als (x, y)-Tupel
     """
 
@@ -43,11 +42,11 @@ class Schiff:
 
     @property
     def versenkt(self):
-        """True wenn alle Felder des Schiffs getroffen wurden."""
+        # True wenn alle Felder des Schiffs getroffen wurden.
         return len(self.treffer) == self.groesse
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -------------------------------------------------------------------------------------------------
 
 class Spielfeld:
     """
@@ -65,7 +64,7 @@ class Spielfeld:
     """
 
     def __init__(self):
-        # Outer list = Zeilen (y), Inner list = Spalten (x)
+        # Äußere Liste = Zeilen (y), Innere Liste = Spalten (x)
         # Zugriff: self.raster[y][x]
         self.raster  = [[0] * 10 for _ in range(10)]
         self.schiffe = []
@@ -77,23 +76,23 @@ class Spielfeld:
 
         Args:
             groesse     – Anzahl der Felder des Schiffs
-            x, y        – Startposition (obere-linke Ecke des Schiffs)
-            horizontal  – True = waagerecht, False = senkrecht
+            x, y        – Startposition (oberstes/linkstes Feld des Schiffs)
+            horizontal  – True = waagerecht (horizontal), False = senkrecht (vertikal)
 
         Returns:
             True wenn die Platzierung gültig wäre, sonst False
         """
         for i in range(groesse):
-            # Je nach Ausrichtung entweder x oder y erhöhen
-            fx = x + (i if horizontal else 0)
-            fy = y + (0 if horizontal else i)
+            # Berechnet mit Ausrichtung und Startkoordinate die vom Schiff belegten Zellen.
+            koordinateX = x + (i if horizontal else 0)
+            koordinateY = y + (0 if horizontal else i)
 
             # Außerhalb des Rasters?
-            if not (0 <= fx < 10 and 0 <= fy < 10):
+            if not (0 <= koordinateX < 10 and 0 <= koordinateY < 10):
                 return False
 
             # Bereits von einem anderen Schiff belegt?
-            if self.raster[fy][fx] == 1:
+            if self.raster[koordinateY][koordinateX] == 1:
                 return False
 
         return True
@@ -112,10 +111,10 @@ class Spielfeld:
             return False
 
         for i in range(schiff.groesse):
-            fx = x + (i if horizontal else 0)
-            fy = y + (0 if horizontal else i)
-            schiff.felder.append((fx, fy))
-            self.raster[fy][fx] = 1     # Zelle als "Schiff" markieren
+            koordinateX = x + (i if horizontal else 0)
+            koordinateY = y + (0 if horizontal else i)
+            schiff.felder.append((koordinateX, koordinateY))
+            self.raster[koordinateY][koordinateX] = 1     # Zelle als "Schiff" markieren
 
         self.schiffe.append(schiff)
         return True
@@ -130,7 +129,7 @@ class Spielfeld:
             "treffer"  – Schiff getroffen, aber noch nicht versenkt
             "versenkt" – Schiff getroffen und vollständig versenkt
         """
-        # Doppelter Schuss auf dieselbe Zelle wird ignoriert
+        # Doppelter Schuss auf dieselbe Zelle wird ignoriert (2 und 3 = bereits beschossen)
         if self.raster[y][x] in (2, 3):
             return None
 
@@ -165,14 +164,18 @@ class Spielfeld:
                     break   # Platzierung erfolgreich → nächstes Schiff
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -------------------------------------------------------------------------------------------------
 
 class KI:
     """
-    Einfacher KI-Algorithmus (Stufe 1: Random Shooter).
-
-    Schießt auf alle 100 Felder des Rasters in zufälliger Reihenfolge,
+    Einfacher KI-Algorithmus (Stufe 1 Einfach: Random Shooter). Stufe 2 Mittel und 3 Hart waren geplant, aber nicht mehr
+    rechtzeitig umsetzbar. 
+    
+    Stufe 1:Einfach: Schießt auf alle 100 Felder des Rasters in zufälliger Reihenfolge,
     ohne ein Feld doppelt zu beschießen.
+    Stufe 2: Mittel: Bei Treffern wird die Umgebung systematisch beschossen, um das Schiff zu versenken.
+    Stufe 3: Hart: Funktioniert wie Stufe 2, aber schießt bei unbekannten Schiffen nur dort hin, wo sie theoretisch noch Platz hätten,
+    basierend auf den bereits getroffenen und verfehlten Schüssen.
 
     Funktionsweise:
         Beim Erstellen wird eine Liste aller (x,y)-Koordinaten gemischt.
