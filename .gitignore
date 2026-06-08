@@ -1,0 +1,11 @@
+projektkontext.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# pytest
+.pytest_cache/
+tests/__pycache__/__init__.cpython-313.pyc
+tests/__pycache__/test_modelle.cpython-313-pytest-9.0.3.pyc
